@@ -290,6 +290,96 @@ class TechnicalFilter:
         return candidates
 
 
+class ExitStrategyCalculator:
+    """
+    Exit戦略計算クラス
+    
+    利益確定と損切りの判断基準を計算します。
+    
+    Attributes:
+        config: 設定オブジェクト
+    """
+    
+    def __init__(self, config: Config):
+        """
+        ExitStrategyCalculatorを初期化する
+        
+        Args:
+            config: 設定オブジェクト
+        """
+        self.config = config
+        logger.info("ExitStrategyCalculatorを初期化しました")
+    
+    def calculate_profit_target(self, current_price: float, ma_10: float) -> Dict:
+        """
+        利益確定戦略を計算する
+        
+        要件10.1: システムが適格なCAN-SLIM銘柄を特定したとき、システムは利益確定Exit指標を計算するものとする
+        要件10.2: 利益確定Exit指標を計算するとき、システムは現在株価から20%上昇した価格を目標価格として算出するものとする
+        要件10.3: 利益確定Exit指標を計算するとき、システムは株価が10日移動平均線を下回った場合をExit条件として設定するものとする
+        
+        Args:
+            current_price: 現在の株価（USD）
+            ma_10: 10日移動平均線
+        
+        Returns:
+            Dict: 利益確定戦略情報
+                - 'target_price': 利益確定目標価格（現在価格 × 1.20）
+                - 'condition': Exit条件の説明
+                - 'reason': 利益確定の理由
+        """
+        # 目標価格を計算（現在価格の120%）
+        target_price = current_price * (1 + self.config.PROFIT_TARGET_PCT)
+        
+        # Exit条件を設定
+        condition = f"株価が10日移動平均線（${ma_10:.2f}）を下回った場合"
+        
+        # 理由を設定
+        reason = "株価が10日移動平均線を下回ったら利益確定を検討"
+        
+        return {
+            'target_price': target_price,
+            'condition': condition,
+            'reason': reason
+        }
+    
+    def calculate_stop_loss(self, current_price: float, ma_50: float) -> Dict:
+        """
+        損切り戦略を計算する
+        
+        要件10.4: システムが適格なCAN-SLIM銘柄を特定したとき、システムは損切りExit指標を計算するものとする
+        要件10.5: 損切りExit指標を計算するとき、システムは現在株価から7%下落した価格を損切り価格として算出するものとする
+        要件10.6: 損切りExit指標を計算するとき、システムは株価が50日移動平均線を大きく下回った場合（3%以上）を追加のExit条件として設定するものとする
+        
+        Args:
+            current_price: 現在の株価（USD）
+            ma_50: 50日移動平均線
+        
+        Returns:
+            Dict: 損切り戦略情報
+                - 'stop_price': 損切り価格（現在価格 × 0.93）
+                - 'ma_stop_condition': 50日移動平均線条件の説明
+                - 'reason': 損切りの理由
+        """
+        # 損切り価格を計算（現在価格の93%）
+        stop_price = current_price * (1 - self.config.STOP_LOSS_PCT)
+        
+        # 50日移動平均線の3%下の価格を計算
+        ma_50_threshold = ma_50 * (1 - self.config.MA_STOP_LOSS_PCT)
+        
+        # 50日移動平均線条件を設定
+        ma_stop_condition = f"株価が50日移動平均線を3%以上下回った場合（${ma_50_threshold:.2f}以下）"
+        
+        # 理由を設定
+        reason = "株価が購入価格から7%下落、または50日移動平均線を3%以上下回ったら損切り"
+        
+        return {
+            'stop_price': stop_price,
+            'ma_stop_condition': ma_stop_condition,
+            'reason': reason
+        }
+
+
 class FundamentalFilter:
     """
     ファンダメンタル分析に基づくフィルタリングクラス

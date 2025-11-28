@@ -8,7 +8,7 @@ CAN-SLIM US Stock Hunter スクリーニングモジュールのテスト
 """
 
 import pytest
-from modules.screener import FundamentalFilter
+from modules.screener import FundamentalFilter, ExitStrategyCalculator
 from config import Config
 
 
@@ -155,3 +155,97 @@ class TestFundamentalFilter:
         is_qualified, metrics = filter.is_qualified(financial_data)
         
         assert is_qualified is False
+
+
+class TestExitStrategyCalculator:
+    """ExitStrategyCalculatorクラスのテスト"""
+    
+    @pytest.fixture
+    def calculator(self):
+        """テスト用のExitStrategyCalculatorインスタンスを作成"""
+        return ExitStrategyCalculator(Config())
+    
+    def test_calculate_profit_target_basic(self, calculator):
+        """利益確定目標価格が正しく計算される（現在価格の120%）"""
+        current_price = 100.0
+        ma_10 = 95.0
+        
+        result = calculator.calculate_profit_target(current_price, ma_10)
+        
+        # 目標価格は現在価格の120%
+        assert result['target_price'] == pytest.approx(120.0, abs=0.01)
+        assert 'condition' in result
+        assert 'reason' in result
+        assert '10日移動平均線' in result['condition']
+        assert '10日移動平均線' in result['reason']
+    
+    def test_calculate_profit_target_different_prices(self, calculator):
+        """異なる株価でも利益確定目標価格が正しく計算される"""
+        test_cases = [
+            (50.0, 60.0),    # 50 * 1.20 = 60
+            (150.0, 180.0),  # 150 * 1.20 = 180
+            (25.5, 30.6),    # 25.5 * 1.20 = 30.6
+        ]
+        
+        for current_price, expected_target in test_cases:
+            result = calculator.calculate_profit_target(current_price, current_price * 0.95)
+            assert result['target_price'] == pytest.approx(expected_target, abs=0.01)
+    
+    def test_calculate_profit_target_includes_ma_10_in_condition(self, calculator):
+        """Exit条件に10日移動平均線の値が含まれる"""
+        current_price = 100.0
+        ma_10 = 95.5
+        
+        result = calculator.calculate_profit_target(current_price, ma_10)
+        
+        # 条件に10日移動平均線の値が含まれることを確認
+        assert '$95.50' in result['condition'] or '95.5' in result['condition']
+    
+    def test_calculate_stop_loss_basic(self, calculator):
+        """損切り価格が正しく計算される（現在価格の93%）"""
+        current_price = 100.0
+        ma_50 = 90.0
+        
+        result = calculator.calculate_stop_loss(current_price, ma_50)
+        
+        # 損切り価格は現在価格の93%
+        assert result['stop_price'] == pytest.approx(93.0, abs=0.01)
+        assert 'ma_stop_condition' in result
+        assert 'reason' in result
+        assert '50日移動平均線' in result['ma_stop_condition']
+        assert '7%' in result['reason']
+    
+    def test_calculate_stop_loss_different_prices(self, calculator):
+        """異なる株価でも損切り価格が正しく計算される"""
+        test_cases = [
+            (50.0, 46.5),    # 50 * 0.93 = 46.5
+            (150.0, 139.5),  # 150 * 0.93 = 139.5
+            (25.0, 23.25),   # 25 * 0.93 = 23.25
+        ]
+        
+        for current_price, expected_stop in test_cases:
+            result = calculator.calculate_stop_loss(current_price, current_price * 0.9)
+            assert result['stop_price'] == pytest.approx(expected_stop, abs=0.01)
+    
+    def test_calculate_stop_loss_ma_50_threshold(self, calculator):
+        """50日移動平均線の3%下の閾値が正しく計算される"""
+        current_price = 100.0
+        ma_50 = 90.0
+        
+        result = calculator.calculate_stop_loss(current_price, ma_50)
+        
+        # 50日移動平均線の3%下 = 90 * 0.97 = 87.3
+        expected_threshold = ma_50 * 0.97
+        assert f'${expected_threshold:.2f}' in result['ma_stop_condition']
+    
+    def test_calculate_stop_loss_includes_both_conditions(self, calculator):
+        """損切り理由に7%下落と50日移動平均線の両方の条件が含まれる"""
+        current_price = 100.0
+        ma_50 = 90.0
+        
+        result = calculator.calculate_stop_loss(current_price, ma_50)
+        
+        # 両方の条件が理由に含まれることを確認
+        assert '7%' in result['reason']
+        assert '50日移動平均線' in result['reason']
+        assert '3%' in result['reason']
