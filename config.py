@@ -43,10 +43,10 @@ class Config:
     MA_50_PERIOD: int = 50  # 50日移動平均線
     MA_200_PERIOD: int = 200  # 200日移動平均線
     
-    # ==================== LINE公式アカウント設定 ====================
+    # ==================== Slack設定 ====================
     
-    LINE_CHANNEL_ACCESS_TOKEN: Optional[str] = os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
-    LINE_USER_ID: Optional[str] = os.getenv("LINE_USER_ID")  # 通知先のLINEユーザーID
+    SLACK_BOT_TOKEN: Optional[str] = os.getenv("SLACK_BOT_TOKEN")
+    SLACK_CHANNEL: str = os.getenv("SLACK_CHANNEL", "#stock-alerts")  # 通知先のSlackチャンネル
     
     # ==================== データソース設定 ====================
     
@@ -82,8 +82,8 @@ class Config:
         Returns:
             bool: 設定が有効な場合True、そうでない場合False
         """
-        if not cls.LINE_CHANNEL_ACCESS_TOKEN:
-            logging.warning("環境変数にLINE_CHANNEL_ACCESS_TOKENが設定されていません")
+        if not cls.SLACK_BOT_TOKEN:
+            logging.warning("環境変数にSLACK_BOT_TOKENが設定されていません")
             return False
         
         if cls.MIN_PRICE <= 0:

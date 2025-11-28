@@ -15,8 +15,9 @@ CAN-SLIM US Stock Hunter メインオーケストレーター
 import logging
 import time
 import sys
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Callable, TypeVar, Optional, Any
 import pandas as pd
+from requests.exceptions import Timeout, RequestException
 
 from config import Config, setup_logging
 from modules.data_loader import DataLoader
@@ -28,6 +29,130 @@ from modules.models import ExitStrategy, NewsItem
 # ロギング設定
 setup_logging()
 logger = logging.getLogger(__name__)
+
+# 型変数
+T = TypeVar('T')
+
+
+def fetch_with_retry(
+    fetch_func: Callable[[], T],
+    max_retries: int = 3,
+    backoff_base: float = 2.0,
+    operation_name: str = "操作"
+) -> Optional[T]:
+    """
+    リトライロジック付きで関数を実行する
+    
+    ネットワークタイムアウトやレート制限エラーが発生した場合、
+    指数バックオフで最大max_retries回までリトライします。
+    
+    Args:
+        fetch_func: 実行する関数（引数なし）
+        max_retries: 最大リトライ回数（デフォルト: 3）
+        backoff_base: 指数バックオフの基数（デフォルト: 2.0）
+        operation_name: 操作名（ログ出力用）
+    
+    Returns:
+        関数の実行結果、または失敗時はNone
+    
+    Examples:
+        >>> def get_data():
+        ...     return api.fetch_data()
+        >>> result = fetch_with_retry(get_data, max_retries=3, operation_name="データ取得")
+    
+    要件: 7.3
+    """
+    for attempt in range(max_retries):
+        try:
+            result = fetch_func()
+            return result
+        
+        except Timeout:
+            if attempt < max_retries - 1:
+                wait_time = backoff_base ** attempt
+                logger.warning(
+                    f"{operation_name}がタイムアウトしました。"
+                    f"{wait_time}秒後にリトライします（試行 {attempt + 1}/{max_retries}）"
+                )
+                time.sleep(wait_time)
+            else:
+                logger.error(f"{operation_name}が最大リトライ回数を超えました")
+                return None
+        
+        except RequestException as e:
+            # レート制限エラーなど
+            if attempt < max_retries - 1:
+                wait_time = backoff_base ** attempt
+                logger.warning(
+                    f"{operation_name}でネットワークエラーが発生しました: {e}。"
+                    f"{wait_time}秒後にリトライします（試行 {attempt + 1}/{max_retries}）"
+                )
+                time.sleep(wait_time)
+            else:
+                logger.error(f"{operation_name}が最大リトライ回数を超えました")
+                return None
+        
+        except Exception as e:
+            logger.error(f"{operation_name}で予期しないエラーが発生しました: {e}")
+            return None
+    
+    return None
+
+
+def safe_process_ticker(
+    ticker: str,
+    process_func: Callable[[str], Optional[Any]],
+    operation_name: str = "処理"
+) -> Optional[Any]:
+    """
+    ティッカー処理を安全に実行する
+    
+    データ欠損や無効なティッカーに遭遇した場合、警告ログを記録し、
+    Noneを返します。これにより、処理を継続できます。
+    
+    Args:
+        ticker: ティッカーシンボル
+        process_func: 実行する処理関数（ティッカーを引数に取る）
+        operation_name: 操作名（ログ出力用）
+    
+    Returns:
+        処理関数の実行結果、または失敗時はNone
+    
+    Examples:
+        >>> def process_data(ticker):
+        ...     return loader.fetch_financial_data(ticker)
+        >>> result = safe_process_ticker("AAPL", process_data, "財務データ取得")
+    
+    要件: 8.1, 8.2, 8.3
+    """
+    try:
+        result = process_func(ticker)
+        
+        if result is None:
+            logger.warning(f"{ticker}: {operation_name}でデータが利用できません。スキップします。")
+            return None
+        
+        # DataFrameの場合、空かどうかをチェック
+        if isinstance(result, pd.DataFrame) and result.empty:
+            logger.warning(f"{ticker}: {operation_name}でデータが空です。スキップします。")
+            return None
+        
+        # 辞書の場合、空かどうかをチェック
+        if isinstance(result, dict) and not result:
+            logger.warning(f"{ticker}: {operation_name}でデータが空です。スキップします。")
+            return None
+        
+        return result
+    
+    except ValueError as e:
+        # 無効なティッカーシンボル
+        logger.warning(f"{ticker}: 無効なティッカーシンボルです: {e}。スキップします。")
+        return None
+    
+    except Exception as e:
+        # その他のエラー
+        logger.warning(f"{ticker}: {operation_name}中にエラーが発生しました: {e}。スキップします。")
+        return None
 
 
 def main():
