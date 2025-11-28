@@ -288,3 +288,137 @@ class TechnicalFilter:
         logger.info(f"テクニカルフィルタリング完了: {len(candidates)}銘柄が通過")
         
         return candidates
+
+
+class FundamentalFilter:
+    """
+    ファンダメンタル分析に基づくフィルタリングクラス
+    
+    財務データを使用して、CAN-SLIM基準のファンダメンタル条件を満たす銘柄を
+    フィルタリングします。
+    
+    Attributes:
+        config: 設定オブジェクト
+    """
+    
+    def __init__(self, config: Config):
+        """
+        FundamentalFilterを初期化する
+        
+        Args:
+            config: 設定オブジェクト
+        """
+        self.config = config
+        logger.info("FundamentalFilterを初期化しました")
+    
+    def check_current_earnings(self, financial_data: Dict) -> Tuple[bool, float, float]:
+        """
+        C基準: EPS成長率または売上成長率が20%以上
+        
+        要件3.2: 直近四半期のEPS成長率が1年前の同四半期と比較して20%以上であるとき、
+        システムはそのティッカーを現在収益基準を満たすものとしてマークするものとする
+        
+        要件3.3: 直近四半期の売上成長率が1年前の同四半期と比較して20%以上であるとき、
+        システムはそのティッカーを現在収益基準を満たすものとしてマークするものとする
+        
+        Args:
+            financial_data: 財務データ辞書
+                - 'quarterly_eps': 四半期EPSのリスト（最新から古い順）
+                - 'quarterly_revenue': 四半期売上のリスト（最新から古い順）
+        
+        Returns:
+            Tuple[bool, float, float]: (合格, EPS成長率, 売上成長率)
+        """
+        eps_growth = 0.0
+        revenue_growth = 0.0
+        
+        # EPS成長率の計算
+        if 'quarterly_eps' in financial_data and financial_data['quarterly_eps']:
+            eps_list = financial_data['quarterly_eps']
+            # 最新四半期と1年前の同四半期（4四半期前）を比較
+            if len(eps_list) >= 5:  # 最低5四半期のデータが必要
+                current_eps = eps_list[0]
+                year_ago_eps = eps_list[4]
+                
+                if year_ago_eps and year_ago_eps != 0 and current_eps:
+                    eps_growth = (current_eps - year_ago_eps) / abs(year_ago_eps)
+        
+        # 売上成長率の計算
+        if 'quarterly_revenue' in financial_data and financial_data['quarterly_revenue']:
+            revenue_list = financial_data['quarterly_revenue']
+            # 最新四半期と1年前の同四半期（4四半期前）を比較
+            if len(revenue_list) >= 5:  # 最低5四半期のデータが必要
+                current_revenue = revenue_list[0]
+                year_ago_revenue = revenue_list[4]
+                
+                if year_ago_revenue and year_ago_revenue != 0 and current_revenue:
+                    revenue_growth = (current_revenue - year_ago_revenue) / abs(year_ago_revenue)
+        
+        # EPS成長率または売上成長率が閾値以上であれば合格
+        passes = (eps_growth >= self.config.EPS_GROWTH_THRESHOLD or 
+                 revenue_growth >= self.config.REV_GROWTH_THRESHOLD)
+        
+        return passes, eps_growth, revenue_growth
+    
+    def check_annual_earnings(self, financial_data: Dict) -> Tuple[bool, float]:
+        """
+        A基準: ROEが15%以上
+        
+        要件3.4: 直近年度のROEが15%以上であるとき、システムはそのティッカーを
+        年間収益基準を満たすものとしてマークするものとする
+        
+        Args:
+            financial_data: 財務データ辞書
+                - 'roe': 年間ROE（小数表記、例: 0.15 = 15%）
+        
+        Returns:
+            Tuple[bool, float]: (合格, ROE)
+        """
+        roe = 0.0
+        
+        if 'roe' in financial_data and financial_data['roe'] is not None:
+            roe = financial_data['roe']
+        
+        # ROEが閾値以上であれば合格
+        passes = roe >= self.config.ROE_THRESHOLD
+        
+        return passes, roe
+    
+    def is_qualified(self, financial_data: Dict) -> Tuple[bool, Dict]:
+        """
+        CAN-SLIM適格判定
+        
+        要件3.5: ティッカーが現在収益基準と年間収益基準の両方を満たすとき、
+        システムはそのティッカーを適格なCAN-SLIM銘柄として分類するものとする
+        
+        Args:
+            financial_data: 財務データ辞書
+        
+        Returns:
+            Tuple[bool, Dict]: (適格, メトリクス辞書)
+                メトリクス辞書には以下が含まれる：
+                - 'eps_growth_q': 四半期EPS成長率
+                - 'revenue_growth_q': 四半期売上成長率
+                - 'roe': 年間ROE
+                - 'sector': セクター
+                - 'industry': 業種
+        """
+        # C基準（現在収益）をチェック
+        current_passes, eps_growth, revenue_growth = self.check_current_earnings(financial_data)
+        
+        # A基準（年間収益）をチェック
+        annual_passes, roe = self.check_annual_earnings(financial_data)
+        
+        # 両方の基準を満たす必要がある
+        is_qualified = current_passes and annual_passes
+        
+        # メトリクス辞書を生成
+        metrics = {
+            'eps_growth_q': eps_growth,
+            'revenue_growth_q': revenue_growth,
+            'roe': roe,
+            'sector': financial_data.get('sector', 'N/A'),
+            'industry': financial_data.get('industry', 'N/A')
+        }
+        
+        return is_qualified, metrics
