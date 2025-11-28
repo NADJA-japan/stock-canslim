@@ -1,0 +1,14 @@
+{
+  "enabled": true,
+  "name": "Git Commit Code Review",
+  "description": "Automatically reviews code changes when a git commit is made by analyzing the diff and providing feedback on code quality, potential issues, and best practices",
+  "version": "1",
+  "when": {
+    "type": "fileEdited",
+    "patterns": []
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "git diff HEAD~1 HEAD"
+  }
+}
