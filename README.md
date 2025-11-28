@@ -1,6 +1,6 @@
 # CAN-SLIM US Stock Hunter
 
-米国株式市場から成長株を自動的にスクリーニングし、Slackに通知するPythonアプリケーションです。
+米国株式市場から成長株を自動的にスクリーニングし、LINE公式アカウントに通知するPythonアプリケーションです。
 
 ## 概要
 
@@ -11,7 +11,7 @@ William O'NeilのCAN-SLIM基準を満たす銘柄を効率的に発見し、投�
 - S&P500/Nasdaq100銘柄の2段階スクリーニング（テクニカル→ファンダメンタル）
 - 自動チャート生成（ローソク足、移動平均線、出来高）
 - Exit戦略の自動計算（利益確定20%、損切り7%）
-- Slack統合による即座の通知
+- LINE公式アカウント統合による即座の通知
 - 企業情報とニュースの自動収集
 
 ## セットアップ
@@ -24,7 +24,7 @@ pip install -r requirements.txt
 
 ### 2. 環境変数の設定
 
-`.env.example`をコピーして`.env`ファイルを作成し、Slack Bot Tokenを設定します：
+`.env.example`をコピーして`.env`ファイルを作成し、LINE Channel Access Tokenを設定します：
 
 ```bash
 cp .env.example .env
@@ -33,7 +33,7 @@ cp .env.example .env
 `.env`ファイルを編集：
 
 ```
-SLACK_BOT_TOKEN=xoxb-your-actual-slack-bot-token
+LINE_CHANNEL_ACCESS_TOKEN=your-actual-line-channel-access-token
 ```
 
 ### 3. ティッカーリストの準備
@@ -71,7 +71,7 @@ can-slim-bot/
 │   ├── data_loader.py   # データ取得
 │   ├── screener.py      # フィルタリング
 │   ├── visualizer.py    # チャート生成
-│   └── notifier.py      # Slack通知
+│   └── notifier.py      # LINE公式アカウント通知
 ├── output/              # チャート画像保存先
 └── tests/               # テストコード
 ```
@@ -82,7 +82,7 @@ can-slim-bot/
 
 - スクリーニング閾値（最低株価、出来高、成長率など）
 - Exit戦略パラメータ（利益確定、損切り）
-- Slackチャンネル名
+- LINE通知設定
 - データ取得期間
 
 ## GitHub Actions での実行
